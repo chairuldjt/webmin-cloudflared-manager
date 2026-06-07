@@ -24,6 +24,7 @@ sub msg {
     my ($bg, $fg, $bd) = $t eq "ok" ? ("#d4edda","#155724","#c3e6cb") : ("#f8d7da","#721c24","#f5c6cb");
     print "<div style='margin:15px 0; padding:10px; background:$bg; color:$fg; border:1px solid $bd; border-radius:4px;'>$text</div>";
 }
+sub btn { my ($u, $t) = @_; return "<a class='ui_button' href='$u'>$t</a>" }
 
 &ui_print_header(undef, "Cloudflared Settings", "", undef, 1);
 
@@ -97,7 +98,7 @@ if (@cf) {
     print &ui_table_start("Config Files","width=95%");
     &ui_columns_start(["File","Path","Actions"],["20%","50%","30%"]);
     for (@cf) { my $n = $_->{name}; $n =~ s/\.ya?ml$//;
-        &ui_columns_row([ $n, $_->{path}, &ui_link("config.cgi?edit=$n","Edit")." | ".&ui_link("index.cgi?action=start_tunnel&tunnel=$n","Start")." | ".&ui_link("config.cgi?action=delete&tunnel=$n","Delete") ])
+        &ui_columns_row([ $n, $_->{path}, btn("config.cgi?edit=$n","Edit")." ".btn("index.cgi?action=start_tunnel&tunnel=$n","Start")." ".btn("config.cgi?action=delete&tunnel=$n","Delete") ])
     }
     &ui_columns_end(); print &ui_table_end()
 } else { msg("err", "No config files in $cd.") }
@@ -113,7 +114,7 @@ if ($et) {
         print &ui_table_start("Editing: $ep","width=95%");
         print &ui_table_row("", &ui_textarea("content",$c,30,100));
         print &ui_table_end(); print &ui_form_end([["save","Save Config"]]);
-        print &ui_link("index.cgi?action=start_tunnel&tunnel=$et","Start this Tunnel")." | ".&ui_link("logs.cgi?service=cloudflared-tunnel-$et","View Logs")
+        print btn("index.cgi?action=start_tunnel&tunnel=$et","Start this Tunnel")." ".btn("logs.cgi?service=cloudflared-tunnel-$et","View Logs")
     } else { msg("err", "File not found.") }
 }
 

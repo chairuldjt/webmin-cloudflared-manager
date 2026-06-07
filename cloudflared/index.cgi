@@ -17,6 +17,7 @@ sub find_binary {
 if (!$cloudflared_bin) { $cloudflared_bin = find_binary(@bin_paths) || "/usr/local/bin/cloudflared"; }
 
 my $bin_exists = -x $cloudflared_bin;
+sub btn { my ($u, $t) = @_; return "<a class='ui_button' href='$u'>$t</a>" }
 
 sub tunnel_list {
     my $out = `$cloudflared_bin tunnel list 2>&1`;
@@ -74,7 +75,7 @@ if ($action && $confirm eq "yes") {
     }
     elsif ($action eq "restart_tunnel" && $tn) { my $r = `systemctl restart cloudflared-tunnel-$tn 2>&1`; msg($? ? "err" : "ok", $? ? $r : "Tunnel '$tn' restarted.") }
     elsif ($action eq "delete_tunnel" && $tn)   { my $r = `$cloudflared_bin tunnel delete $tn 2>&1`; msg($? ? "err" : "ok", $? ? $r : "Tunnel '$tn' deleted.") }
-    print &ui_hr(); print &ui_link("index.cgi", "Back to Dashboard");
+    print &ui_hr(); print btn("index.cgi", "Back to Dashboard");
     &ui_print_footer("index.cgi", "Back"); exit;
 }
 
@@ -129,10 +130,10 @@ if (@all) {
     &ui_columns_start(["Tunnel Name","Status","Source","Actions"], ["30%","15%","15%","40%"]);
     for my $t (@all) {
         my $sc = $t->{status} eq "active" ? "ui_green" : ($t->{status} eq "inactive" ? "ui_red" : "");
-        my $ac = ($t->{status} eq "active" ? &ui_link("index.cgi?action=stop_tunnel&tunnel=$t->{raw_name}","Stop")." | ".&ui_link("index.cgi?action=restart_tunnel&tunnel=$t->{raw_name}","Restart") : &ui_link("index.cgi?action=start_tunnel&tunnel=$t->{raw_name}","Start"));
-        $ac .= " | ".&ui_link("config.cgi?tunnel=$t->{raw_name}","Config");
-        $ac .= " | ".&ui_link("logs.cgi?service=cloudflared-tunnel-$t->{raw_name}","Logs");
-        $ac .= " | ".&ui_link("index.cgi?action=delete_tunnel&tunnel=$t->{raw_name}","Delete");
+        my $ac = ($t->{status} eq "active" ? btn("index.cgi?action=stop_tunnel&tunnel=$t->{raw_name}","Stop").btn("index.cgi?action=restart_tunnel&tunnel=$t->{raw_name}","Restart") : btn("index.cgi?action=start_tunnel&tunnel=$t->{raw_name}","Start"));
+        $ac .= btn("config.cgi?tunnel=$t->{raw_name}","Config");
+        $ac .= btn("logs.cgi?service=cloudflared-tunnel-$t->{raw_name}","Logs");
+        $ac .= btn("index.cgi?action=delete_tunnel&tunnel=$t->{raw_name}","Delete");
         &ui_columns_row([ $t->{name}, "<span class='$sc'><b>".($t->{status}||"unknown")."</b></span>", $t->{source}||"auto", $ac ])
     }
     &ui_columns_end(); print &ui_table_end()
@@ -142,7 +143,7 @@ if (@all) {
 
 print &ui_hr();
 print &ui_table_start("Management", "width=50%");
-print &ui_table_row("Quick Links", &ui_link("config.cgi","Settings & Config Editor") . " &nbsp; " . &ui_link("logs.cgi","View Logs"));
+print &ui_table_row("Quick Links", btn("config.cgi","Settings & Config Editor") . " " . btn("logs.cgi","View Logs"));
 print &ui_table_end();
 
 &ui_print_footer("/", "Back to Webmin");
