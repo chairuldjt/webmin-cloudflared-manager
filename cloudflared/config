@@ -1,0 +1,2 @@
+cloudflared=/usr/local/bin/cloudflared
+config_file=/etc/cloudflared/config.yml

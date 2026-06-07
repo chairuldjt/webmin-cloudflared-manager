@@ -1,0 +1,3 @@
+desc=Cloudflared Manager
+category=System
+longdesc=Manage Cloudflared tunnel service from Webmin (start/stop/restart, view logs, edit config).
