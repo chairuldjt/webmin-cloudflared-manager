@@ -2,6 +2,7 @@
 use strict;
 use warnings;
 use WebminCore;
+our (%config, %in, %gconfig);
 init_config();
 ReadParse();
 
