@@ -9,7 +9,6 @@ ReadParse();
 my $config_file = $config{'config_file'} || "";
 my $cloudflared_bin = $config{'cloudflared'} || "";
 
-# --- Auto-detection ---
 my @config_paths = (
     "/etc/cloudflared/config.yml",
     "/etc/cloudflared/config.yaml",
@@ -45,35 +44,43 @@ my $bin_exists = -x $cloudflared_bin;
 my $action = $in{'action'} || '';
 my $tunnel = $in{'tunnel'} || '';
 
+sub show_message {
+    my ($type, $text) = @_;
+    my $color = $type eq "success" ? "#d4edda" : "#f8d7da";
+    my $text_color = $type eq "success" ? "#155724" : "#721c24";
+    my $border = $type eq "success" ? "#c3e6cb" : "#f5c6cb";
+    print "<div style='margin:15px 0; padding:10px; background:$color; color:$text_color; border:1px solid $border; border-radius:4px;'>";
+    print $text;
+    print "</div>";
+}
+
 &ui_print_header(undef, "Cloudflared Settings", "", undef, 1);
 
-# --- Save module settings ---
 if ($in{'save_settings'}) {
     &open_lock_config();
     $config{'config_file'} = $in{'config_file'} || "";
     $config{'cloudflared'} = $in{'cloudflared'} || "";
     &save_config();
-    &ui_print_result_message(1, "Settings saved.");
-    print &ui_redirect("config.cgi", 1);
+    show_message("success", "Settings saved.");
+    print &redirect("config.cgi");
     exit;
 }
 
-# --- Create tunnel via cloudflared CLI ---
+# --- Create tunnel ---
 if ($action eq "create" && $in{'tunnel_name'}) {
     my $name = $in{'tunnel_name'};
     $name =~ s/[^a-zA-Z0-9_-]//g;
     if ($name) {
         my $r = `$cloudflared_bin tunnel create $name 2>&1`;
         if ($?) {
-            &ui_print_result_message(0, "Failed to create tunnel: $r");
+            show_message("error", "Failed to create tunnel: $r");
         } else {
-            &ui_print_result_message(1, "Tunnel '$name' created successfully.");
+            show_message("success", "Tunnel '$name' created successfully.");
             my $cred_file = "";
             if ($r =~ /credentials file at\s+(.+)$/m) { $cred_file = $1; }
             if ($r =~ /Written credentials file to\s+(.+)$/m) { $cred_file = $1; }
             if ($cred_file) {
                 $cred_file =~ s/\s+$//;
-                # Auto-create config for this tunnel
                 my $conf_dir = "/etc/cloudflared";
                 my $conf_path = "$conf_dir/$name.yml";
                 unless (-f $conf_path) {
@@ -84,9 +91,8 @@ if ($action eq "create" && $in{'tunnel_name'}) {
                     print $fh "ingress:\n";
                     print $fh "  - service: http://localhost:80\n";
                     close($fh);
-                    &ui_print_result_message(1, "Auto-created config: $conf_path");
+                    show_message("success", "Auto-created config: $conf_path");
                 }
-                # Setup systemd service
                 my $svc = "[Unit]\nDescription=Cloudflared Tunnel $name\nAfter=network.target\n\n[Service]\nType=simple\nExecStart=$cloudflared_bin tunnel run $name\nRestart=on-failure\nRestartSec=5\n\n[Install]\nWantedBy=multi-user.target\n";
                 my $svc_path = "/etc/systemd/system/cloudflared-tunnel-$name.service";
                 unless (-f $svc_path) {
@@ -94,12 +100,12 @@ if ($action eq "create" && $in{'tunnel_name'}) {
                     print $fh $svc;
                     close($fh);
                     `systemctl daemon-reload 2>&1`;
-                    &ui_print_result_message(1, "Auto-created systemd service: cloudflared-tunnel-$name");
+                    show_message("success", "Auto-created systemd service: cloudflared-tunnel-$name");
                 }
             }
         }
     } else {
-        &ui_print_result_message(0, "Invalid tunnel name. Use only letters, numbers, hyphens and underscores.");
+        show_message("error", "Invalid tunnel name. Use only letters, numbers, hyphens and underscores.");
     }
     print &ui_hr();
 }
@@ -110,14 +116,10 @@ if ($action eq "delete" && $tunnel) {
     $t =~ s/[^a-zA-Z0-9_-]//g;
     if ($t && $in{'confirm'} eq "yes") {
         my $r = `$cloudflared_bin tunnel delete $t 2>&1`;
-        &ui_print_result_message($? == 0, "Tunnel '$t' deleted.");
-        &ui_print_result_message(0, $r) if $?;
-        # Cleanup config and systemd
-        my $conf = "/etc/cloudflared/$t.yml";
-        if (-f $conf) { unlink($conf); }
-        my $svc = "/etc/systemd/system/cloudflared-tunnel-$t.service";
-        if (-f $svc) { unlink($svc); }
-        if (-f $conf || -f $svc) { `systemctl daemon-reload 2>&1`; }
+        show_message($? == 0 ? "success" : "error", $? == 0 ? "Tunnel '$t' deleted." : $r);
+        if (-f "/etc/cloudflared/$t.yml") { unlink("/etc/cloudflared/$t.yml"); }
+        if (-f "/etc/systemd/system/cloudflared-tunnel-$t.service") { unlink("/etc/systemd/system/cloudflared-tunnel-$t.service"); }
+        `systemctl daemon-reload 2>&1`;
     } else {
         &ui_print_header(undef, "Confirm Delete", "", undef, 1);
         &ui_confirm("Are you sure you want to delete tunnel '<b>$t</b>'? This will delete its config and systemd service.",
@@ -129,42 +131,38 @@ if ($action eq "delete" && $tunnel) {
     print &ui_hr();
 }
 
-# --- Module Settings ---
 print &ui_form_start("config.cgi", "post");
-print &ui_table_start({ title => "Module Settings", width => "80%" });
+print &ui_table_start("Module Settings", "width=80%");
 
 print &ui_table_row("Cloudflared Binary",
     &ui_textbox("cloudflared", $cloudflared_bin, 50) .
     ($detected_bin ? " <span style='color:green;font-size:10px;'>(detected: $detected_bin)</span>"
-                   : " <span style='color:red;font-size:10px;'>(not detected)</span>")
-);
+                   : " <span style='color:red;font-size:10px;'>(not detected)</span>"));
 
 print &ui_table_row("Default Config File",
     &ui_textbox("config_file", $config_file, 50) .
     ($detected_config ? " <span style='color:green;font-size:10px;'>(detected: $detected_config)</span>"
-                      : " <span style='color:orange;font-size:10px;'>(not detected)</span>")
-);
+                      : " <span style='color:orange;font-size:10px;'>(not detected)</span>"));
 
 print &ui_table_end();
 print &ui_form_end([ [ "save_settings", "Save Settings" ] ]);
 
-# --- Create New Tunnel ---
+# --- Create news tunnel ---
 print &ui_hr();
 print &ui_heading("Create New Tunnel");
 
 if ($bin_exists) {
     print &ui_form_start("config.cgi", "get");
-    print &ui_table_start({ title => "Create Tunnel via Cloudflared CLI", width => "60%" });
+    print &ui_table_start("Create Tunnel", "width=60%");
     print &ui_table_row("Tunnel Name",
-        &ui_textbox("tunnel_name", "", 30) . " <i>(letters, numbers, hyphens, underscores)</i>"
-    );
+        &ui_textbox("tunnel_name", "", 30) . " <i>(letters, numbers, hyphens, underscores)</i>");
     print &ui_table_end();
     print &ui_form_end([ [ "action=create", "Create Tunnel" ] ]);
 } else {
-    print &ui_notify_failure("Cloudflared binary not found. Cannot create tunnels.");
+    show_message("error", "Cloudflared binary not found. Cannot create tunnels.");
 }
 
-# --- Existing Tunnels ---
+# --- Existing config files ---
 print &ui_hr();
 print &ui_heading("Configured Tunnels");
 
@@ -181,7 +179,7 @@ if (-d $conf_dir) {
 }
 
 if (@config_files) {
-    print &ui_table_start({ title => "Config Files in $conf_dir", width => "95%" });
+    print &ui_table_start("Config Files", "width=95%");
     my @headers = ("File", "Path", "Actions");
     &ui_columns_start(\@headers, ["20%", "50%", "30%"]);
 
@@ -189,15 +187,15 @@ if (@config_files) {
         my $tunnel_name = $cf->{name};
         $tunnel_name =~ s/\.ya?ml$//;
         my $actions = &ui_link("config.cgi?edit=$tunnel_name", "Edit") . " | " .
-                      &ui_link("index.cgi?action=start_tunnel&tunnel=$tunnel_name", "Start Tunnel") . " | " .
-                      &ui_link("config.cgi?action=delete&tunnel=$tunnel_name", "Delete Tunnel");
+                      &ui_link("index.cgi?action=start_tunnel&tunnel=$tunnel_name", "Start") . " | " .
+                      &ui_link("config.cgi?action=delete&tunnel=$tunnel_name", "Delete");
         &ui_columns_row([ $tunnel_name, $cf->{path}, $actions ]);
     }
 
     &ui_columns_end();
     print &ui_table_end();
 } else {
-    &ui_print_result_message(0, "No config files found in $conf_dir.");
+    show_message("error", "No config files found in $conf_dir.");
 }
 
 # --- Per-tunnel config editor ---
@@ -214,9 +212,9 @@ if ($edit_tunnel) {
         if (open(my $fh, '>', $edit_path)) {
             print $fh $in{'content'};
             close($fh);
-            &ui_print_result_message(1, "Saved $edit_path");
+            show_message("success", "Saved $edit_path");
         } else {
-            &ui_print_result_message(0, "Failed to write $edit_path: $!");
+            show_message("error", "Failed to write $edit_path: $!");
         }
         print &ui_hr();
     }
@@ -230,21 +228,18 @@ if ($edit_tunnel) {
         }
 
         print &ui_form_start("config.cgi", "post");
-        print &ui_table_start({ title => "Editing: $edit_path", width => "95%" });
+        print &ui_table_start("Editing: $edit_path", "width=95%");
         print &ui_table_row("",
-            &ui_textarea("content", $content, 30, 100, undef, undef,
-                "style='font-family:monospace;font-size:11px;width:100%;'")
-        );
+            &ui_textarea("content", $content, 30, 100) .
+            &ui_hidden("edit", $edit_tunnel));
         print &ui_table_end();
         print &ui_form_end([ [ "save", "Save Config" ] ]);
-        print &ui_hidden("edit", $edit_tunnel);
         print &ui_link("index.cgi?action=start_tunnel&tunnel=$edit_tunnel", "Start this Tunnel") . " | ";
         print &ui_link("logs.cgi?service=cloudflared-tunnel-$edit_tunnel", "View Logs");
     } else {
-        &ui_print_result_message(0, "File not found. Create it by creating the tunnel first.");
+        show_message("error", "File not found. Create it by creating the tunnel first.");
     }
 } elsif (-f $config_file && $config_file !~ /^\Q$conf_dir\E/) {
-    # Also allow editing the main/default config file if it's outside /etc/cloudflared
     print &ui_hr();
     print &ui_heading("Default Config File");
 
@@ -252,9 +247,9 @@ if ($edit_tunnel) {
         if (open(my $fh, '>', $config_file)) {
             print $fh $in{'content'};
             close($fh);
-            &ui_print_result_message(1, "Saved $config_file");
+            show_message("success", "Saved $config_file");
         } else {
-            &ui_print_result_message(0, "Failed to write $config_file: $!");
+            show_message("error", "Failed to write $config_file: $!");
         }
         print &ui_hr();
     }
@@ -269,11 +264,9 @@ if ($edit_tunnel) {
     }
 
     print &ui_form_start("config.cgi", "post");
-    print &ui_table_start({ title => "Editing: $config_file", width => "95%" });
+    print &ui_table_start("Editing: $config_file", "width=95%");
     print &ui_table_row("",
-        &ui_textarea("content", $content, 30, 100, undef, undef,
-            "style='font-family:monospace;font-size:11px;width:100%;'")
-    );
+        &ui_textarea("content", $content, 30, 100));
     print &ui_table_end();
     print &ui_form_end([ [ "save", "Save Config" ] ]);
 }

@@ -8,7 +8,6 @@ ReadParse();
 
 my $cloudflared_bin = $config{'cloudflared'} || "";
 
-# --- Auto-detection ---
 my @bin_paths = (
     "/usr/local/bin/cloudflared",
     "/usr/bin/cloudflared",
@@ -26,7 +25,6 @@ if (!$cloudflared_bin) { $cloudflared_bin = find_binary(@bin_paths) || "/usr/loc
 
 my $bin_exists = -x $cloudflared_bin;
 
-# --- Tunnel data ---
 sub get_tunnels_from_list {
     my $out = `$cloudflared_bin tunnel list 2>&1`;
     return undef if $?;
@@ -52,8 +50,6 @@ sub get_tunnels_from_systemd {
         my @parts = split(/\s+/, $s);
         next if @parts < 4;
         my $service = $parts[0];
-        my $load = $parts[1];
-        my $active = $parts[2];
         my $sub = $parts[3];
         my $name = $service;
         $name =~ s/\.service$//;
@@ -65,10 +61,7 @@ sub get_tunnels_from_systemd {
             name => $display_name,
             raw_name => $name,
             status => $running,
-            active => $active,
-            sub => $sub,
             source => "systemd",
-            is_tunnel => $is_tunnel,
         };
     }
     return \@tunnels;
@@ -94,14 +87,22 @@ sub get_tunnels_from_configs {
             raw_name => $name,
             status => $running,
             source => "config",
-            path => $full,
         };
     }
     closedir($dh);
     return \@configs;
 }
 
-# --- Action handling ---
+sub show_message {
+    my ($type, $text) = @_;
+    my $color = $type eq "success" ? "#d4edda" : "#f8d7da";
+    my $text_color = $type eq "success" ? "#155724" : "#721c24";
+    my $border = $type eq "success" ? "#c3e6cb" : "#f5c6cb";
+    print "<div style='margin:15px 0; padding:10px; background:$color; color:$text_color; border:1px solid $border; border-radius:4px;'>";
+    print $text;
+    print "</div>";
+}
+
 my $action = $in{'action'} || '';
 my $confirm = $in{'confirm'} || '';
 my $tunnel_name = $in{'tunnel'} || '';
@@ -111,45 +112,39 @@ if ($action && $confirm eq "yes") {
 
     if ($action eq "start_service") {
         my $r = `systemctl start cloudflared 2>&1`;
-        &ui_print_result_message($? == 0, "Cloudflared service started.");
-        &ui_print_result_message(0, $r) if $?;
+        show_message($? == 0 ? "success" : "error", $? == 0 ? "Cloudflared service started." : $r);
     } elsif ($action eq "stop_service") {
         my $r = `systemctl stop cloudflared 2>&1`;
-        &ui_print_result_message($? == 0, "Cloudflared service stopped.");
-        &ui_print_result_message(0, $r) if $?;
+        show_message($? == 0 ? "success" : "error", $? == 0 ? "Cloudflared service stopped." : $r);
     } elsif ($action eq "restart_service") {
         my $r = `systemctl restart cloudflared 2>&1`;
-        &ui_print_result_message($? == 0, "Cloudflared service restarted.");
-        &ui_print_result_message(0, $r) if $?;
+        show_message($? == 0 ? "success" : "error", $? == 0 ? "Cloudflared service restarted." : $r);
     } elsif ($action eq "start_tunnel" && $tunnel_name) {
         my $r = `systemctl start cloudflared-tunnel-$tunnel_name 2>&1`;
         if ($?) {
             $r = `$cloudflared_bin tunnel run $tunnel_name --no-autoupdate 2>&1 &`;
-            &ui_print_result_message(0, "No systemd service found. Tunnel started in background.");
+            show_message("error", "No systemd service found. Tunnel started in background.");
         } else {
-            &ui_print_result_message(1, "Tunnel '$tunnel_name' started.");
-            &ui_print_result_message(0, $r) if $?;
+            show_message("success", "Tunnel '$tunnel_name' started.");
         }
     } elsif ($action eq "stop_tunnel" && $tunnel_name) {
         my $r = `systemctl stop cloudflared-tunnel-$tunnel_name 2>&1`;
         if ($?) {
             $r = `pkill -f "cloudflared tunnel run $tunnel_name" 2>&1`;
-            &ui_print_result_message($? == 0, "Tunnel '$tunnel_name' stopped.");
+            show_message($? == 0 ? "success" : "error", $? == 0 ? "Tunnel '$tunnel_name' stopped." : $r);
         } else {
-            &ui_print_result_message(1, "Tunnel '$tunnel_name' stopped.");
+            show_message("success", "Tunnel '$tunnel_name' stopped.");
         }
     } elsif ($action eq "restart_tunnel" && $tunnel_name) {
         my $r = `systemctl restart cloudflared-tunnel-$tunnel_name 2>&1`;
-        &ui_print_result_message($? == 0, "Tunnel '$tunnel_name' restarted.");
-        &ui_print_result_message(0, $r) if $?;
+        show_message($? == 0 ? "success" : "error", $? == 0 ? "Tunnel '$tunnel_name' restarted." : $r);
     } elsif ($action eq "delete_tunnel" && $tunnel_name) {
         my $r = `$cloudflared_bin tunnel delete $tunnel_name 2>&1`;
-        &ui_print_result_message($? == 0, "Tunnel '$tunnel_name' deleted.");
-        &ui_print_result_message(0, $r) if $?;
+        show_message($? == 0 ? "success" : "error", $? == 0 ? "Tunnel '$tunnel_name' deleted." : $r);
     }
 
     print &ui_hr();
-    print &ui_link("index.cgi", "Back to Dashboard");
+    print "<a class='ui_button' href='index.cgi'>Back to Dashboard</a>";
     &ui_print_footer("index.cgi", "Back");
     exit;
 }
@@ -185,12 +180,10 @@ if ($action && !$confirm) {
     exit;
 }
 
-# --- Get tunnel data ---
 my $tunnels_api = $bin_exists ? get_tunnels_from_list() : undef;
 my $tunnels_sys = $bin_exists ? get_tunnels_from_systemd() : [];
 my $tunnels_cfg = get_tunnels_from_configs();
 
-# --- Render ---
 &ui_print_header(undef, "Cloudflared Manager", "", undef, 1);
 
 my $main_status = `systemctl is-active cloudflared 2>&1`;
@@ -204,35 +197,31 @@ if ($main_status eq "active") {
     chomp($version);
 }
 
-# --- Main service info ---
-my @info_rows;
-push @info_rows, [ "Cloudflared Binary",
+print &ui_table_start("Cloudflared Overview", "width=75%");
+print &ui_table_row("Cloudflared Binary",
     $cloudflared_bin .
     ($bin_exists ? " <span style='color:green;font-size:10px;'>(found)</span>"
-                 : " <span style='color:red;font-size:10px;'>(not found - install cloudflared)</span>") ];
-push @info_rows, [ "Main Service Status",
-    "<span class='$main_class'><b>$main_label</b></span>" ];
-push @info_rows, [ "Version", $version ] if $version;
+                 : " <span style='color:red;font-size:10px;'>(not found - install cloudflared)</span>"));
+print &ui_table_row("Main Service Status",
+    "<span class='$main_class'><b>$main_label</b></span>");
+print &ui_table_row("Version", $version) if $version;
+print &ui_table_end();
 
-print &ui_info_table(\@info_rows, { title => "Cloudflared Overview", width => "75%" });
-
-# --- Main service actions ---
-print &ui_hr();
-print &ui_form_start("index.cgi", "get");
-print &ui_table_start({ title => "Main Service Actions", width => "75%" });
 my @main_actions = (
     [ "start_service", "Start Service" ],
     [ "stop_service", "Stop Service" ],
     [ "restart_service", "Restart Service" ],
 );
+
+print &ui_hr();
+print &ui_form_start("index.cgi", "get");
+print &ui_table_start("Main Service Actions", "width=75%");
 print &ui_table_row("Action",
-    &ui_radio_select("action", "", \@main_actions) . " " .
-    &ui_submit("Execute")
-);
+    &ui_select("action", "", \@main_actions) . " " .
+    &ui_submit("Execute"));
 print &ui_table_end();
 print &ui_form_end();
 
-# --- Tunnels section ---
 print &ui_hr();
 print &ui_heading("Tunnels");
 
@@ -259,7 +248,6 @@ for my $t (@$tunnels_cfg) {
 }
 
 if (@all_tunnels) {
-    # Merge tunnel info: check systemd status for each
     for my $t (@all_tunnels) {
         if ($t->{source} ne "systemd") {
             my $st = `systemctl is-active cloudflared-tunnel-$t->{raw_name} 2>&1`;
@@ -268,7 +256,7 @@ if (@all_tunnels) {
         }
     }
 
-    print &ui_table_start({ title => "Configured Tunnels", width => "95%" });
+    print &ui_table_start("Configured Tunnels", "width=95%");
 
     my @headers = ("Tunnel Name", "Status", "Source", "Actions");
     &ui_columns_start(\@headers, ["30%", "15%", "15%", "40%"]);
@@ -302,18 +290,15 @@ if (@all_tunnels) {
     &ui_columns_end();
     print &ui_table_end();
 } else {
-    print &ui_notify_failure("No tunnels found. Configure one in Settings or via cloudflared CLI.");
+    print &ui_hr();
+    show_message("error", "No tunnels found. Configure one in Settings or via cloudflared CLI.");
 }
 
-# --- Create tunnel button ---
 print &ui_hr();
-print &ui_form_start("config.cgi", "get");
-print &ui_table_start({ title => "Quick Actions", width => "50%" });
-print &ui_table_row("Tunnel Management",
+print &ui_table_start("Management", "width=50%");
+print &ui_table_row("Quick Links",
     &ui_link("config.cgi", "Settings & Config Editor") . " &nbsp; " .
-    &ui_link("logs.cgi", "View Logs")
-);
+    &ui_link("logs.cgi", "View Logs"));
 print &ui_table_end();
-print &ui_form_end();
 
 &ui_print_footer("/", "Back to Webmin");
