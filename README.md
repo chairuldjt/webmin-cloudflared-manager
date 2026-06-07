@@ -1,43 +1,68 @@
 # Cloudflared Manager
 
-A [Webmin](https://webmin.com) module to manage Cloudflared tunnel service — start/stop/restart, view logs, and edit configuration.
+A [Webmin](https://webmin.com) module to manage multiple Cloudflared tunnels — start/stop/restart services, view per-tunnel logs, edit YAML configs, create and delete tunnels.
 
 ## Features
 
-- **Service Control** — Start, Stop, and Restart the Cloudflared tunnel service
-- **Status Monitoring** — View real-time service status (active/inactive)
-- **Log Viewer** — Browse recent logs via `journalctl`
-- **Config Editor** — Edit `/etc/cloudflared/config.yml` directly from Webmin
+- **Multi-Tunnel Management** — List, start, stop, restart, and delete individual tunnels
+- **Service Control** — Start/Stop/Restart the main Cloudflared daemon
+- **Status Monitoring** — Real-time service status for each tunnel and the main daemon
+- **Log Viewer** — View per-tunnel or global logs via `journalctl` with filtering and auto-refresh
+- **Config Editor** — Edit per-tunnel YAML configuration files directly from Webmin
+- **Auto-Detection** — Automatically detects cloudflared binary and config file paths
+- **Manual Override** — Set custom paths for binary and config files
+- **Tunnel Creation** — Create new tunnels via cloudflared CLI with auto-setup of systemd service and config
+- **Systemd Integration** — Manages both main `cloudflared.service` and per-tunnel `cloudflared-tunnel-<name>.service`
 
 ## Installation
 
-1. Download the latest `.wbm.gz` from [Releases](https://github.com/chairuladitya/webmin-cloudflared-manager/releases)
-2. In Webmin, go to **Webmin → Webmin Modules → Install Module**
-3. Choose the downloaded file and install
-4. The module appears under **System → Cloudflared Manager**
+Download the latest `.wbm.gz` from [Releases](https://github.com/chairuladitya/webmin-cloudflared-manager/releases) and install via **Webmin → Webmin Modules → Install Module**.
 
-Or manually extract to Webmin modules directory:
+Or manually extract:
 
 ```bash
 tar -xzf cloudflared-manager.wbm.gz -C /opt/webmin/
 ```
 
+The module appears under **System → Cloudflared Manager**.
+
 ## Requirements
 
-- Webmin (tested on 2.x)
-- Cloudflared installed and configured as a systemd service
-- Perl modules: `WebminCore`
+- Webmin 2.x
+- Cloudflared installed and configured
+- systemd
 
 ## Files
 
 ```
 cloudflared/
 ├── module.info    # Module metadata
-├── index.cgi      # Main dashboard (status + controls)
-├── logs.cgi       # Log viewer
-├── config.cgi     # Configuration editor
-└── config         # Module config (paths)
+├── index.cgi      # Dashboard — tunnel list, service controls, status
+├── logs.cgi       # Per-tunnel log viewer with filtering & auto-refresh
+├── config.cgi     # Settings, tunnel creation, per-tunnel config editor
+└── config         # Module configuration (binary path, config path)
 ```
+
+## Usage
+
+### Dashboard (`index.cgi`)
+- View overall cloudflared version and main service status
+- See all configured tunnels with their current status
+- Start, stop, restart individual tunnels or the main service
+- Quick links to config and logs for each tunnel
+
+### Settings & Config (`config.cgi`)
+- Set cloudflared binary path (auto-detected or manual)
+- Set default config file path
+- Create new tunnels with automatic systemd service setup
+- Edit per-tunnel YAML configuration files
+- Delete tunnels with cleanup
+
+### Log Viewer (`logs.cgi`)
+- Select which service/tunnel to view logs from
+- Adjust number of lines shown
+- Filter logs by keyword (grep)
+- Enable auto-refresh (30s interval)
 
 ## Development
 
